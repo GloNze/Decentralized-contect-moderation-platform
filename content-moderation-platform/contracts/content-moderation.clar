@@ -175,3 +175,20 @@
         (ok true)
     )
 )
+
+;; Read-only Functions
+
+;; Get content details
+(define-read-only (get-content (content-id uint))
+    (map-get? contents { content-id: content-id })
+)
+
+;; Get user reputation
+(define-read-only (get-user-reputation (user principal))
+    (default-to { score: u0 } (map-get? user-reputation { user: user }))
+)
+
+;; Check if user has voted on specific content
+(define-read-only (has-voted (content-id uint) (user principal))
+    (is-some (map-get? user-votes { content-id: content-id, voter: user }))
+)
