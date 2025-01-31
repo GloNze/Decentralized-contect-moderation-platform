@@ -359,3 +359,52 @@ Clarinet.test({
     }
 });
 
+
+// Category System Tests
+Clarinet.test({
+    name: "Ensure that category system works correctly",
+    async fn(chain: Chain, accounts: Map<string, Account>)
+    {
+        const deployer = accounts.get("deployer")!;
+        const user1 = accounts.get("wallet_1")!;
+
+        // Create category
+        let block = chain.mineBlock([
+            // First stake tokens to get reputation
+            Tx.contractCall(
+                "content-moderation",
+                "stake-tokens",
+                [types.uint(1000)],
+                deployer.address
+            ),
+            Tx.contractCall(
+                "content-moderation",
+                "create-category",
+                [
+                    types.ascii("test-category"),
+                    types.uint(100),
+                    types.uint(2)
+                ],
+                deployer.address
+            )
+        ]);
+
+        assertEquals(block.receipts[1].result, '(ok u1)');
+
+        // Submit content with category
+        block = chain.mineBlock([
+            Tx.contractCall(
+                "content-moderation",
+                "submit-content-with-category",
+                [
+                    types.buff(stringToUint8Array("test content hash")),
+                    types.uint(1)
+                ],
+                deployer.address
+            )
+        ]);
+
+        assertEquals(block.receipts[0].result, '(ok u1)');
+    }
+});
+
