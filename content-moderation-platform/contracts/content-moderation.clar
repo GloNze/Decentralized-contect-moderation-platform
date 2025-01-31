@@ -441,3 +441,35 @@
         (ok true)
     )
 )
+
+;; Finalize appeal
+(define-public (finalize-appeal (content-id uint))
+    (let (
+        (appeal (unwrap! (map-get? moderation-appeals { content-id: content-id }) ERR-CONTENT-NOT-FOUND))
+        (content (unwrap! (map-get? contents { content-id: content-id }) ERR-CONTENT-NOT-FOUND))
+    )
+        (asserts! (>= block-height (get voting-ends-at appeal)) ERR-NOT-AUTHORIZED)
+        
+        (let (
+            (appeal-approved (> (get votes-for appeal) (get votes-against appeal)))
+            (new-status (if appeal-approved
+                (if (is-eq (get status content) "rejected") "approved" "rejected")
+                (get status content)))
+        )
+            ;; Update content status
+            (map-set contents
+                { content-id: content-id }
+                (merge content { status: new-status })
+            )
+            
+            ;; Update appeal status
+            (map-set moderation-appeals
+                { content-id: content-id }
+                (merge appeal { status: (if appeal-approved "upheld" "rejected") })
+            )
+            
+            (ok true)
+        )
+    )
+)
+
