@@ -380,3 +380,32 @@
     )
 )
 
+
+;; Appeal moderation decision
+(define-public (appeal-decision 
+    (content-id uint)
+    (reason (string-ascii 500))
+    (evidence-hash (buff 32)))
+    (let (
+        (content (unwrap! (map-get? contents { content-id: content-id }) ERR-CONTENT-NOT-FOUND))
+    )
+        (asserts! (is-eq tx-sender (get author content)) ERR-NOT-AUTHORIZED)
+        (asserts! (or (is-eq (get status content) "rejected") (is-eq (get status content) "approved")) ERR-NOT-AUTHORIZED)
+        (asserts! (is-none (map-get? moderation-appeals { content-id: content-id })) ERR-ALREADY-VOTED)
+        
+        (map-set moderation-appeals
+            { content-id: content-id }
+            {
+                appellant: tx-sender,
+                reason: reason,
+                evidence-hash: evidence-hash,
+                votes-for: u0,
+                votes-against: u0,
+                status: "pending",
+                created-at: block-height,
+                voting-ends-at: (+ block-height VOTING_PERIOD)
+            }
+        )
+        (ok true)
+    )
+)
