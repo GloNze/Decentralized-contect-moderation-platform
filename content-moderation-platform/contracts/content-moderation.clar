@@ -332,3 +332,51 @@
         (ok category-id)
     )
 )
+
+;; Submit content with category
+(define-public (submit-content-with-category 
+    (content-hash (buff 32))
+    (category-id uint))
+    (let (
+        (category (unwrap! (map-get? moderation-categories { category-id: category-id }) 
+            (err u3))) ;; ERR-CONTENT-NOT-FOUND
+    )
+        ;; Verify category is active and user has sufficient reputation
+        (asserts! (get active category) 
+            (err u1)) ;; ERR-NOT-AUTHORIZED
+        (asserts! (>= (get score (get-user-reputation tx-sender)) 
+                     (get min-reputation category)) 
+            (err u4)) ;; ERR-INSUFFICIENT-REPUTATION
+        
+        ;; Get next content ID
+        (let ((content-id (+ (var-get content-counter) u1)))
+            (begin
+                ;; Create base content first
+                (map-set contents
+                    { content-id: content-id }
+                    {
+                        author: tx-sender,
+                        content-hash: content-hash,
+                        status: "pending",
+                        created-at: block-height,
+                        votes-for: u0,
+                        votes-against: u0,
+                        voting-ends-at: (+ block-height VOTING_PERIOD)
+                    }
+                )
+                
+                ;; Update content counter
+                (var-set content-counter content-id)
+                
+                ;; Assign category
+                (map-set content-category-assignments
+                    { content-id: content-id }
+                    { category-id: category-id }
+                )
+                
+                (ok content-id)
+            )
+        )
+    )
+)
+
