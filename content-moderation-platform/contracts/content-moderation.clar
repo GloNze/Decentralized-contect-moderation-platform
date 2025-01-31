@@ -473,3 +473,30 @@
     )
 )
 
+
+;; Update user reputation based on voting history
+(define-public (update-reputation-from-history (user principal))
+    (let (
+        (activity (get-user-activity user))
+        (reputation (get-user-reputation user))
+        (success-rate (if (> (get total-votes activity) u0)
+            (/ (* (get successful-votes activity) u100) (get total-votes activity))
+            u0))
+    )
+        (asserts! (> (get total-votes activity) u10) ERR-INSUFFICIENT-REPUTATION)
+        
+        (let (
+            (reputation-adjustment (if (>= success-rate u75)
+                u50  ;; Bonus for high success rate
+                (if (< success-rate u40)
+                    (- u50)  ;; Penalty for low success rate
+                    u0)))  ;; No change for average performance
+        )
+            (map-set user-reputation
+                { user: user }
+                { score: (+ (get score reputation) reputation-adjustment) }
+            )
+            (ok true)
+        )
+    )
+)
