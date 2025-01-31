@@ -236,6 +236,29 @@
     (is-some (map-get? user-votes { content-id: content-id, voter: user }))
 )
 
+;; Read-only Functions
+
+(define-read-only (get-category-details (category-id uint))
+    (map-get? moderation-categories { category-id: category-id })
+)
+
+(define-read-only (get-user-activity (user principal))
+    (default-to 
+        { 
+            last-action: u0,
+            total-votes: u0,
+            successful-votes: u0,
+            total-challenges: u0,
+            successful-challenges: u0
+        }
+        (map-get? user-activity { user: user })
+    )
+)
+
+(define-read-only (get-content-appeal (content-id uint))
+    (map-get? moderation-appeals { content-id: content-id })
+)
+
 ;; Staking Functions
 
 ;; Stake tokens to become a moderator
