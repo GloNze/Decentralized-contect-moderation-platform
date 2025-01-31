@@ -80,6 +80,49 @@
     }
 )
 
+;; Additional Data Maps
+(define-map moderation-categories
+    { category-id: uint }
+    {
+        name: (string-ascii 20),
+        min-reputation: uint,
+        stake-multiplier: uint,
+        active: bool
+    }
+)
+
+(define-map content-category-assignments
+    { content-id: uint }
+    { category-id: uint }
+)
+
+(define-map user-activity
+    { user: principal }
+    {
+        last-action: uint,
+        total-votes: uint,
+        successful-votes: uint,
+        total-challenges: uint,
+        successful-challenges: uint
+    }
+)
+
+(define-map moderation-appeals
+    { content-id: uint }
+    {
+        appellant: principal,
+        reason: (string-ascii 500),
+        evidence-hash: (buff 32),
+        votes-for: uint,
+        votes-against: uint,
+        status: (string-ascii 20),
+        created-at: uint,
+        voting-ends-at: uint
+    }
+)
+
+;; Variables
+(define-data-var category-counter uint u0)
 
 ;; Variables
 (define-data-var content-counter uint u0)
