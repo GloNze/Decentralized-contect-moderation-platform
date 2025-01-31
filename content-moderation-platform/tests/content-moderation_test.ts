@@ -39,3 +39,57 @@ Clarinet.test({
         assertEquals(contentResult.result.includes('"status": "pending"'), true);
     }
 });
+
+// Voting System Tests
+Clarinet.test({
+    name: "Ensure that voting system works correctly",
+    async fn(chain: Chain, accounts: Map<string, Account>)
+    {
+        const deployer = accounts.get("deployer")!;
+        const user1 = accounts.get("wallet_1")!;
+        const user2 = accounts.get("wallet_2")!;
+
+        // First give reputation to voters
+        let block = chain.mineBlock([
+            Tx.contractCall(
+                "content-moderation",
+                "stake-tokens",
+                [types.uint(1000)],
+                user2.address
+            )
+        ]);
+
+        // Submit content
+        block = chain.mineBlock([
+            Tx.contractCall(
+                "content-moderation",
+                "submit-content",
+                [types.buff(stringToUint8Array("test content hash"))],
+                user1.address
+            )
+        ]);
+
+        // Vote on content
+        block = chain.mineBlock([
+            Tx.contractCall(
+                "content-moderation",
+                "vote",
+                [types.uint(1), types.bool(true)],
+                user2.address
+            )
+        ]);
+
+        assertEquals(block.receipts[0].result, '(ok true)');
+
+        // Try to vote again (should fail)
+        block = chain.mineBlock([
+            Tx.contractCall(
+                "content-moderation",
+                "vote",
+                [types.uint(1), types.bool(true)],
+                user2.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, '(err u2)'); // ERR-ALREADY-VOTED
+    }
+});
