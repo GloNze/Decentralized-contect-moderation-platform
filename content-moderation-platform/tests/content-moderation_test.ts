@@ -524,3 +524,51 @@ Clarinet.test({
 });
 
 
+// Error Cases Tests
+Clarinet.test({
+    name: "Ensure that error cases are handled correctly",
+    async fn(chain: Chain, accounts: Map<string, Account>)
+    {
+        const user1 = accounts.get("wallet_1")!;
+        const user2 = accounts.get("wallet_2")!;
+
+        // Try to vote without reputation
+        let block = chain.mineBlock([
+            Tx.contractCall(
+                "content-moderation",
+                "vote",
+                [types.uint(1), types.bool(true)],
+                user1.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, '(err u4)'); // ERR-INSUFFICIENT-REPUTATION
+
+        // Try to create category without reputation
+        block = chain.mineBlock([
+            Tx.contractCall(
+                "content-moderation",
+                "create-category",
+                [
+                    types.ascii("test-category"),
+                    types.uint(100),
+                    types.uint(2)
+                ],
+                user1.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, '(err u4)'); // ERR-INSUFFICIENT-REPUTATION
+
+        // Try to stake insufficient amount
+        block = chain.mineBlock([
+            Tx.contractCall(
+                "content-moderation",
+                "stake-tokens",
+                [types.uint(100)], // Less than MIN_STAKE_AMOUNT
+                user1.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, '(err u5)'); // ERR-INVALID-STAKE
+    }
+});
+
+
