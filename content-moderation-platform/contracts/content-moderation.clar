@@ -409,3 +409,35 @@
         (ok true)
     )
 )
+
+;; Vote on appeal
+(define-public (vote-on-appeal 
+    (content-id uint)
+    (approve bool))
+    (let (
+        (appeal (unwrap! (map-get? moderation-appeals { content-id: content-id }) ERR-CONTENT-NOT-FOUND))
+        (voter-activity (get-user-activity tx-sender))
+    )
+        (asserts! (< block-height (get voting-ends-at appeal)) ERR-NOT-AUTHORIZED)
+        (asserts! (has-sufficient-reputation tx-sender) ERR-INSUFFICIENT-REPUTATION)
+        
+        (map-set moderation-appeals
+            { content-id: content-id }
+            (merge appeal {
+                votes-for: (if approve (+ (get votes-for appeal) u1) (get votes-for appeal)),
+                votes-against: (if (not approve) (+ (get votes-against appeal) u1) (get votes-against appeal))
+            })
+        )
+        
+        ;; Update voter activity
+        (map-set user-activity
+            { user: tx-sender }
+            (merge voter-activity {
+                last-action: block-height,
+                total-votes: (+ (get total-votes voter-activity) u1)
+            })
+        )
+        
+        (ok true)
+    )
+)
