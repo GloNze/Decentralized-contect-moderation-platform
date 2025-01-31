@@ -142,3 +142,74 @@ Clarinet.test({
     }
 });
 
+
+// Appeals System Tests
+Clarinet.test({
+    name: "Ensure that appeals system works correctly",
+    async fn(chain: Chain, accounts: Map<string, Account>)
+    {
+        const deployer = accounts.get("deployer")!;
+        const user1 = accounts.get("wallet_1")!;
+        const user2 = accounts.get("wallet_2")!;
+
+        // Submit content and finalize moderation
+        let block = chain.mineBlock([
+            Tx.contractCall(
+                "content-moderation",
+                "submit-content",
+                [types.buff(stringToUint8Array("test content hash"))],
+                user1.address
+            )
+        ]);
+
+        // Mine blocks to pass voting period
+        chain.mineEmptyBlockUntil(150);
+
+        // Finalize moderation
+        block = chain.mineBlock([
+            Tx.contractCall(
+                "content-moderation",
+                "finalize-moderation",
+                [types.uint(1)],
+                deployer.address
+            )
+        ]);
+
+        // Submit appeal
+        block = chain.mineBlock([
+            Tx.contractCall(
+                "content-moderation",
+                "appeal-decision",
+                [
+                    types.uint(1),
+                    types.ascii("appeal reason"),
+                    types.buff(stringToUint8Array("evidence hash"))
+                ],
+                user1.address
+            )
+        ]);
+
+        assertEquals(block.receipts[0].result, '(ok true)');
+
+        // Vote on appeal
+        block = chain.mineBlock([
+            // First stake to get reputation
+            Tx.contractCall(
+                "content-moderation",
+                "stake-tokens",
+                [types.uint(1000)],
+                user2.address
+            ),
+            Tx.contractCall(
+                "content-moderation",
+                "vote-on-appeal",
+                [types.uint(1), types.bool(true)],
+                user2.address
+            )
+        ]);
+
+        assertEquals(block.receipts[1].result, '(ok true)');
+    }
+});
+
+
