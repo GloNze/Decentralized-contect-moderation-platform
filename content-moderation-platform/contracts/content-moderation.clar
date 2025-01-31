@@ -307,3 +307,28 @@
         (ok true)
     )
 )
+
+
+;; Create new moderation category
+(define-public (create-category 
+    (name (string-ascii 20))
+    (min-reputation uint)
+    (stake-multiplier uint))
+    (let (
+        (category-id (+ (var-get category-counter) u1))
+    )
+        (asserts! (has-sufficient-reputation tx-sender) ERR-INSUFFICIENT-REPUTATION)
+        
+        (map-set moderation-categories
+            { category-id: category-id }
+            {
+                name: name,
+                min-reputation: min-reputation,
+                stake-multiplier: stake-multiplier,
+                active: true
+            }
+        )
+        (var-set category-counter category-id)
+        (ok category-id)
+    )
+)
