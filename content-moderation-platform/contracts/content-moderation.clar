@@ -80,6 +80,49 @@
     }
 )
 
+;; Additional Data Maps
+(define-map moderation-categories
+    { category-id: uint }
+    {
+        name: (string-ascii 20),
+        min-reputation: uint,
+        stake-multiplier: uint,
+        active: bool
+    }
+)
+
+(define-map content-category-assignments
+    { content-id: uint }
+    { category-id: uint }
+)
+
+(define-map user-activity
+    { user: principal }
+    {
+        last-action: uint,
+        total-votes: uint,
+        successful-votes: uint,
+        total-challenges: uint,
+        successful-challenges: uint
+    }
+)
+
+(define-map moderation-appeals
+    { content-id: uint }
+    {
+        appellant: principal,
+        reason: (string-ascii 500),
+        evidence-hash: (buff 32),
+        votes-for: uint,
+        votes-against: uint,
+        status: (string-ascii 20),
+        created-at: uint,
+        voting-ends-at: uint
+    }
+)
+
+;; Variables
+(define-data-var category-counter uint u0)
 
 ;; Variables
 (define-data-var content-counter uint u0)
@@ -193,6 +236,29 @@
     (is-some (map-get? user-votes { content-id: content-id, voter: user }))
 )
 
+;; Read-only Functions
+
+(define-read-only (get-category-details (category-id uint))
+    (map-get? moderation-categories { category-id: category-id })
+)
+
+(define-read-only (get-user-activity (user principal))
+    (default-to 
+        { 
+            last-action: u0,
+            total-votes: u0,
+            successful-votes: u0,
+            total-challenges: u0,
+            successful-challenges: u0
+        }
+        (map-get? user-activity { user: user })
+    )
+)
+
+(define-read-only (get-content-appeal (content-id uint))
+    (map-get? moderation-appeals { content-id: content-id })
+)
+
 ;; Staking Functions
 
 ;; Stake tokens to become a moderator
@@ -239,5 +305,198 @@
             }
         )
         (ok true)
+    )
+)
+
+
+;; Create new moderation category
+(define-public (create-category 
+    (name (string-ascii 20))
+    (min-reputation uint)
+    (stake-multiplier uint))
+    (let (
+        (category-id (+ (var-get category-counter) u1))
+    )
+        (asserts! (has-sufficient-reputation tx-sender) ERR-INSUFFICIENT-REPUTATION)
+        
+        (map-set moderation-categories
+            { category-id: category-id }
+            {
+                name: name,
+                min-reputation: min-reputation,
+                stake-multiplier: stake-multiplier,
+                active: true
+            }
+        )
+        (var-set category-counter category-id)
+        (ok category-id)
+    )
+)
+
+;; Submit content with category
+(define-public (submit-content-with-category 
+    (content-hash (buff 32))
+    (category-id uint))
+    (let (
+        (category (unwrap! (map-get? moderation-categories { category-id: category-id }) 
+            (err u3))) ;; ERR-CONTENT-NOT-FOUND
+    )
+        ;; Verify category is active and user has sufficient reputation
+        (asserts! (get active category) 
+            (err u1)) ;; ERR-NOT-AUTHORIZED
+        (asserts! (>= (get score (get-user-reputation tx-sender)) 
+                     (get min-reputation category)) 
+            (err u4)) ;; ERR-INSUFFICIENT-REPUTATION
+        
+        ;; Get next content ID
+        (let ((content-id (+ (var-get content-counter) u1)))
+            (begin
+                ;; Create base content first
+                (map-set contents
+                    { content-id: content-id }
+                    {
+                        author: tx-sender,
+                        content-hash: content-hash,
+                        status: "pending",
+                        created-at: block-height,
+                        votes-for: u0,
+                        votes-against: u0,
+                        voting-ends-at: (+ block-height VOTING_PERIOD)
+                    }
+                )
+                
+                ;; Update content counter
+                (var-set content-counter content-id)
+                
+                ;; Assign category
+                (map-set content-category-assignments
+                    { content-id: content-id }
+                    { category-id: category-id }
+                )
+                
+                (ok content-id)
+            )
+        )
+    )
+)
+
+
+;; Appeal moderation decision
+(define-public (appeal-decision 
+    (content-id uint)
+    (reason (string-ascii 500))
+    (evidence-hash (buff 32)))
+    (let (
+        (content (unwrap! (map-get? contents { content-id: content-id }) ERR-CONTENT-NOT-FOUND))
+    )
+        (asserts! (is-eq tx-sender (get author content)) ERR-NOT-AUTHORIZED)
+        (asserts! (or (is-eq (get status content) "rejected") (is-eq (get status content) "approved")) ERR-NOT-AUTHORIZED)
+        (asserts! (is-none (map-get? moderation-appeals { content-id: content-id })) ERR-ALREADY-VOTED)
+        
+        (map-set moderation-appeals
+            { content-id: content-id }
+            {
+                appellant: tx-sender,
+                reason: reason,
+                evidence-hash: evidence-hash,
+                votes-for: u0,
+                votes-against: u0,
+                status: "pending",
+                created-at: block-height,
+                voting-ends-at: (+ block-height VOTING_PERIOD)
+            }
+        )
+        (ok true)
+    )
+)
+
+;; Vote on appeal
+(define-public (vote-on-appeal 
+    (content-id uint)
+    (approve bool))
+    (let (
+        (appeal (unwrap! (map-get? moderation-appeals { content-id: content-id }) ERR-CONTENT-NOT-FOUND))
+        (voter-activity (get-user-activity tx-sender))
+    )
+        (asserts! (< block-height (get voting-ends-at appeal)) ERR-NOT-AUTHORIZED)
+        (asserts! (has-sufficient-reputation tx-sender) ERR-INSUFFICIENT-REPUTATION)
+        
+        (map-set moderation-appeals
+            { content-id: content-id }
+            (merge appeal {
+                votes-for: (if approve (+ (get votes-for appeal) u1) (get votes-for appeal)),
+                votes-against: (if (not approve) (+ (get votes-against appeal) u1) (get votes-against appeal))
+            })
+        )
+        
+        ;; Update voter activity
+        (map-set user-activity
+            { user: tx-sender }
+            (merge voter-activity {
+                last-action: block-height,
+                total-votes: (+ (get total-votes voter-activity) u1)
+            })
+        )
+        
+        (ok true)
+    )
+)
+
+;; Finalize appeal
+(define-public (finalize-appeal (content-id uint))
+    (let (
+        (appeal (unwrap! (map-get? moderation-appeals { content-id: content-id }) ERR-CONTENT-NOT-FOUND))
+        (content (unwrap! (map-get? contents { content-id: content-id }) ERR-CONTENT-NOT-FOUND))
+    )
+        (asserts! (>= block-height (get voting-ends-at appeal)) ERR-NOT-AUTHORIZED)
+        
+        (let (
+            (appeal-approved (> (get votes-for appeal) (get votes-against appeal)))
+            (new-status (if appeal-approved
+                (if (is-eq (get status content) "rejected") "approved" "rejected")
+                (get status content)))
+        )
+            ;; Update content status
+            (map-set contents
+                { content-id: content-id }
+                (merge content { status: new-status })
+            )
+            
+            ;; Update appeal status
+            (map-set moderation-appeals
+                { content-id: content-id }
+                (merge appeal { status: (if appeal-approved "upheld" "rejected") })
+            )
+            
+            (ok true)
+        )
+    )
+)
+
+
+;; Update user reputation based on voting history
+(define-public (update-reputation-from-history (user principal))
+    (let (
+        (activity (get-user-activity user))
+        (reputation (get-user-reputation user))
+        (success-rate (if (> (get total-votes activity) u0)
+            (/ (* (get successful-votes activity) u100) (get total-votes activity))
+            u0))
+    )
+        (asserts! (> (get total-votes activity) u10) ERR-INSUFFICIENT-REPUTATION)
+        
+        (let (
+            (reputation-adjustment (if (>= success-rate u75)
+                u50  ;; Bonus for high success rate
+                (if (< success-rate u40)
+                    (- u50)  ;; Penalty for low success rate
+                    u0)))  ;; No change for average performance
+        )
+            (map-set user-reputation
+                { user: user }
+                { score: (+ (get score reputation) reputation-adjustment) }
+            )
+            (ok true)
+        )
     )
 )
