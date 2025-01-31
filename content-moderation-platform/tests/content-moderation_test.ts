@@ -478,3 +478,49 @@ Clarinet.test({
     }
 });
 
+
+// Reputation System Tests
+Clarinet.test({
+    name: "Ensure that reputation system works correctly",
+    async fn(chain: Chain, accounts: Map<string, Account>)
+    {
+        const user1 = accounts.get("wallet_1")!;
+
+        // Stake tokens to get initial reputation
+        let block = chain.mineBlock([
+            Tx.contractCall(
+                "content-moderation",
+                "stake-tokens",
+                [types.uint(1000)],
+                user1.address
+            )
+        ]);
+
+        // Submit multiple contents and votes to build history
+        for (let i = 0; i < 11; i++)
+        {
+            block = chain.mineBlock([
+                Tx.contractCall(
+                    "content-moderation",
+                    "submit-content",
+                    [types.buff(stringToUint8Array(`content ${i}`))],
+                    user1.address
+                )
+            ]);
+        }
+
+        // Update reputation from history
+        block = chain.mineBlock([
+            Tx.contractCall(
+                "content-moderation",
+                "update-reputation-from-history",
+                [types.principal(user1.address)],
+                user1.address
+            )
+        ]);
+
+        assertEquals(block.receipts[0].result, '(ok true)');
+    }
+});
+
+
